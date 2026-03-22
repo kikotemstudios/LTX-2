@@ -24,6 +24,8 @@ uv sync --frozen
 source .venv/bin/activate
 ```
 
+**macOS:** use `--frozen` as above. Plain `uv sync` refreshes `uv.lock` and the resolver will try to build Linux/TensorRT wheels (e.g. `tensorrt-cu12`) and fail — run `uv lock` on Linux/CI if you need an updated lockfile.
+
 ### Required Models
 
 Download the following models from the [LTX-2.3 HuggingFace repository](https://huggingface.co/Lightricks/LTX-2.3):
@@ -102,11 +104,12 @@ To use our model with ComfyUI, please follow the instructions at <https://github
 
 ## 📦 Packages
 
-This repository is organized as a monorepo with three main packages:
+This repository is organized as a monorepo with these packages:
 
 * **[ltx-core](packages/ltx-core/)** - Core model implementation, inference stack, and utilities
 * **[ltx-pipelines](packages/ltx-pipelines/)** - High-level pipeline implementations for text-to-video, image-to-video, and other generation modes
 * **[ltx-trainer](packages/ltx-trainer/)** - Training and fine-tuning tools for LoRA, full fine-tuning, and IC-LoRA
+* **[ltx-api](packages/ltx-api/)** - Self-hosted REST API compatible with the [LTX commercial API](https://docs.ltx.video/welcome) (for LTX Desktop and other clients)
 
 Each package has its own README and documentation. See the [Documentation](#-documentation) section below.
 
@@ -117,3 +120,4 @@ Each package includes comprehensive documentation:
 * **[LTX-Core README](packages/ltx-core/README.md)** - Core model implementation, inference stack, and utilities
 * **[LTX-Pipelines README](packages/ltx-pipelines/README.md)** - High-level pipeline implementations and usage guides
 * **[LTX-Trainer README](packages/ltx-trainer/README.md)** - Training and fine-tuning documentation with detailed guides
+* **[LTX-API README](packages/ltx-api/README.md)** - HTTP API server, tests, and Desktop integration

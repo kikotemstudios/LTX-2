@@ -1,0 +1,29 @@
+services:
+  ltx-api:
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile.ltx-api
+    ports:
+      - "${LTX_PUBLISH_PORT:-8080}:8080"
+    env_file:
+      - .env
+    environment:
+      LTX_API_INFERENCE_BACKEND: "${LTX_API_INFERENCE_BACKEND:-vastai}"
+      LTX_API_STORAGE_DIR: /data/ltx-api-storage
+    volumes:
+      - ltx_api_storage:/data/ltx-api-storage
+    command:
+      [
+        "python",
+        "-m",
+        "uvicorn",
+        "ltx_api.main:create_app_instance",
+        "--factory",
+        "--host",
+        "0.0.0.0",
+        "--port",
+        "8080",
+      ]
+
+volumes:
+  ltx_api_storage:

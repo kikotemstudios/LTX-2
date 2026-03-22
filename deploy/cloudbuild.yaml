@@ -1,0 +1,26 @@
+# Build ltx-api image and push to Artifact Registry.
+# Submit from monorepo root:
+#   gcloud builds submit --config=deploy/cloudbuild.yaml .
+#
+# Requires: Artifact Registry repo (see deploy/GCP-DEPLOY.md).
+
+substitutions:
+  _REGION: us-central1
+  _AR_REPO: ltx-docker
+  _IMAGE_NAME: ltx-api
+
+steps:
+  - name: gcr.io/cloud-builders/docker
+    args:
+      - build
+      - -f
+      - deploy/Dockerfile.ltx-api
+      - -t
+      - ${_REGION}-docker.pkg.dev/$PROJECT_ID/${_AR_REPO}/${_IMAGE_NAME}:$SHORT_SHA
+      - -t
+      - ${_REGION}-docker.pkg.dev/$PROJECT_ID/${_AR_REPO}/${_IMAGE_NAME}:latest
+      - .
+
+images:
+  - ${_REGION}-docker.pkg.dev/$PROJECT_ID/${_AR_REPO}/${_IMAGE_NAME}:$SHORT_SHA
+  - ${_REGION}-docker.pkg.dev/$PROJECT_ID/${_AR_REPO}/${_IMAGE_NAME}:latest

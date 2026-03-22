@@ -1,16 +1,11 @@
-# Local / CI build from monorepo root: run with compose file inside this repo, e.g.
-#   docker compose -f deploy/docker-compose.yml --env-file deploy/.env up --build
-# Compose resolves build.context ".." relative to THIS FILE'S DIRECTORY → monorepo root.
-# Do NOT copy this file alone to /opt/ltx (you get lstat .../deploy: no such file).
-# For a VM without the repo, use docker-compose.gcp.yml (pull image only).
+# Run **ltx-api** from Artifact Registry — image built by Cloud Build, not on this host.
+# On the GCP VM: save as docker-compose.yml under /opt/ltx + .env with LTX_DOCKER_IMAGE.
+# Do not use deploy/docker-compose.yml here (that file is for local `docker compose build`).
 
 services:
   ltx-api:
     container_name: ltx-api
-    build:
-      context: ..
-      dockerfile: deploy/Dockerfile.ltx-api
-    image: ${LTX_DOCKER_IMAGE:-ltx-api:local}
+    image: ${LTX_DOCKER_IMAGE:?set LTX_DOCKER_IMAGE in .env e.g. REGION-docker.pkg.dev/PROJECT/REPO/ltx-api:latest}
     restart: unless-stopped
     ports:
       - "${LTX_PUBLISH_PORT:-8080}:8080"

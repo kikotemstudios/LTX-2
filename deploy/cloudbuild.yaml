@@ -2,6 +2,10 @@
 # Submit from monorepo root:
 #   gcloud builds submit --config=deploy/cloudbuild.yaml .
 #
+# Manual submit: SHORT_SHA is empty unless you override the *default* var (no _ prefix):
+#   --substitutions=SHORT_SHA=$(git rev-parse --short HEAD),_REGION=...
+# Do not use _SHORT_SHA — custom keys must be referenced as ${_NAME} in this file.
+#
 # Requires: Artifact Registry repo (see deploy/GCP-DEPLOY.md).
 
 substitutions:

@@ -20,11 +20,13 @@ graph LR
 
 ## GCP VM + Docker Compose
 
-On the VM (from repo root):
+**Production (typical):** Cloud Build produces the image; the VM **pulls** only — [`deploy/docker-compose.gcp.yml`](../../../deploy/docker-compose.gcp.yml) + `.env` with **`LTX_DOCKER_IMAGE`** → [`deploy/GCP-DEPLOY.md`](../../../deploy/GCP-DEPLOY.md) §5.
+
+**Dev: local `docker compose build`** (full repo clone on your laptop or a scratch VM — **not** the Cloud Build prod path):
 
 ```bash
 cp deploy/.env.example deploy/.env
-# edit deploy/.env — set LTX_API_VAST_API_KEY, LTX_API_AUTH_TOKEN, LTX_API_PUBLIC_BASE_URL, etc.
+# edit deploy/.env — Vast, auth, public URL; optional LTX_DOCKER_IMAGE (defaults to ltx-api:local when building)
 
 docker compose -f deploy/docker-compose.yml --env-file deploy/.env up -d --build
 ```

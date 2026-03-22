@@ -45,3 +45,13 @@ def test_not_found_uses_commercial_shape(app_minimal) -> None:
   assert r.status_code == 404
   body = r.json()
   _assert_error_shape(body)
+
+
+def test_route_404_preserves_specific_message(app_minimal) -> None:
+  """Normalize404Middleware must not clobber HTTPException(404, error_payload(...))."""
+  client = TestClient(app_minimal)
+  r = client.get("/v1/jobs/00000000-0000-0000-0000-000000000000")
+  assert r.status_code == 404
+  body = r.json()
+  _assert_error_shape(body)
+  assert body["error"]["message"] == "Unknown job"

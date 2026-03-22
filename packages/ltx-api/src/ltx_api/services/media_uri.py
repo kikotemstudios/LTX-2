@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import base64
-import os
 import re
 import tempfile
 from pathlib import Path
@@ -15,14 +14,20 @@ from ltx_api.services.storage import StorageService
 
 
 def _write_temp_bytes(data: bytes, suffix: str) -> Path:
-  fd, name = tempfile.mkstemp(suffix=suffix)
+  tmp = tempfile.NamedTemporaryFile(suffix=suffix, delete=False)
+  path = Path(tmp.name)
   try:
-    with os.fdopen(fd, "wb") as f:
-      f.write(data)
+    tmp.write(data)
+    tmp.flush()
   except Exception:
-    os.close(fd)
+    tmp.close()
+    try:
+      path.unlink()
+    except OSError:
+      pass
     raise
-  return Path(name)
+  tmp.close()
+  return path
 
 
 def _decode_data_uri(uri: str) -> Path:
@@ -52,9 +57,9 @@ async def _download_url(url: str, *, client: httpx.AsyncClient | None) -> Path:
   use_client = client or httpx.AsyncClient(timeout=30.0)
   close = client is None
   try:
-    r = await use_client.get(url, follow_redirects=False)
+    r = await use_client.get(url, follow_redirects=True)
     r.raise_for_status()
-    parsed = urlparse(url)
+    parsed = urlparse(str(r.url))
     name = Path(unquote(parsed.path)).name or "download.bin"
     suffix = Path(name).suffix or ".bin"
     return _write_temp_bytes(r.content, suffix)

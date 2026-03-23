@@ -24,6 +24,12 @@ class VastAPIError(RuntimeError):
   pass
 
 
+def is_insufficient_credit_error(exc: BaseException) -> bool:
+  """True if Vast rejected the request for billing — retrying other offers will not help."""
+  s = str(exc).lower()
+  return "insufficient_credit" in s or "lacks credit" in s
+
+
 def _auth_header(api_key: str) -> dict[str, str]:
   if not api_key.strip():
     msg = "VAST_API_KEY / LTX_API_VAST_API_KEY is required for Vast.ai provisioning"

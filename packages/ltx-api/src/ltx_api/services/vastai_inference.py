@@ -190,6 +190,15 @@ class VastaiInferenceBackend:
           )
           break
         except vast.VastAPIError as exc:
+          # Billing failure is authoritative on this account — do not retry other offers or
+          # template→image fallback (the image path uses the same credit).
+          if vast.is_insufficient_credit_error(exc):
+            logger.warning(
+              "Vast create_instance failed (insufficient credit, offer_id=%s): %s",
+              offer_id,
+              exc,
+            )
+            raise exc
           # Some offers reject the template payload; fallback to raw image create.
           fallback_exc: vast.VastAPIError | None = None
           if template_hash.strip() and "invalid_args" in str(exc).lower():
@@ -221,6 +230,8 @@ class VastaiInferenceBackend:
             offer_id,
             reported,
           )
+          if vast.is_insufficient_credit_error(reported):
+            raise reported
           if attempt + 1 < max_create_attempts:
             time.sleep(1.0 + float(attempt))
             continue

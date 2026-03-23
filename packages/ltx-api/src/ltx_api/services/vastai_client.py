@@ -108,11 +108,12 @@ def create_instance(
 ) -> int:
   """Start rental; returns new contract / instance id from API."""
   headers = {**_auth_header(api_key), "Content-Type": "application/json"}
+  # Template-based create: Vast docs only use template_hash_id + optional overrides
+  # (label, disk, env). Sending runtype with a template yields HTTP 400 invalid_args.
   if template_hash_id.strip():
     body: dict[str, Any] = {
       "template_hash_id": template_hash_id.strip(),
       "disk": disk_gb,
-      "runtype": "ssh_direct",
       "label": label,
     }
   else:

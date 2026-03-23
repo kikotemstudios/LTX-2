@@ -144,7 +144,14 @@ def create_instance(
     raw_preview: str
     try:
       parsed = r.json()
-      detail = str(parsed.get("error") or parsed.get("msg") or parsed)
+      err_code = parsed.get("error")
+      err_msg = parsed.get("msg")
+      if err_code is not None and err_msg is not None:
+        detail = f"{err_code}: {err_msg}"
+      elif err_msg is not None:
+        detail = str(err_msg)
+      else:
+        detail = str(err_code or parsed)
       raw_preview = str(parsed)[:2000]
     except Exception:
       raw_preview = (r.text or "")[:2000]

@@ -190,7 +190,8 @@ class VastaiInferenceBackend:
           )
           break
         except vast.VastAPIError as exc:
-          # Some offers reject the template payload as invalid_args; fallback to raw image create.
+          # Some offers reject the template payload; fallback to raw image create.
+          fallback_exc: vast.VastAPIError | None = None
           if template_hash.strip() and "invalid_args" in str(exc).lower():
             logger.warning(
               "Vast template create rejected for offer_id=%s; retrying same offer with image payload",
@@ -210,19 +211,20 @@ class VastaiInferenceBackend:
                 debug_log_payload=self._settings.vast_debug_log_payload,
               )
               break
-            except vast.VastAPIError:
-              pass
+            except vast.VastAPIError as img_exc:
+              fallback_exc = img_exc
+          reported = fallback_exc or exc
           logger.warning(
             "Vast create_instance failed (attempt %s/%s, offer_id=%s): %s",
             attempt + 1,
             max_create_attempts,
             offer_id,
-            exc,
+            reported,
           )
           if attempt + 1 < max_create_attempts:
             time.sleep(1.0 + float(attempt))
             continue
-          raise
+          raise reported
       if contract_id is None:
         raise RuntimeError("Vast provision failed without contract_id")
       info = self._poll_instance_ready(client, contract_id)

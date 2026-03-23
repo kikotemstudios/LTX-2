@@ -2,11 +2,14 @@
 
 from __future__ import annotations
 
+from unittest.mock import MagicMock
+
 import pytest
 from fastapi.testclient import TestClient
 
 from ltx_api.config import Settings
 from ltx_api.main import create_app
+from ltx_api.services.vastai_client import VastAPIError
 
 
 @pytest.fixture
@@ -55,3 +58,33 @@ def test_route_404_preserves_specific_message(app_minimal) -> None:
   body = r.json()
   _assert_error_shape(body)
   assert body["error"]["message"] == "Unknown job"
+
+
+def test_vast_api_error_returns_502_gpu_provider_shape(tmp_path) -> None:
+  app = create_app(
+    settings=Settings(
+      auth_token="",
+      inference_backend="mock",
+      storage_dir=tmp_path / "storage",
+      public_base_url="http://testserver",
+    ),
+  )
+  app.state.inference = MagicMock()
+  app.state.inference.text_to_video.side_effect = VastAPIError("Vast: insufficient balance")
+  client = TestClient(app)
+  r = client.post(
+    "/v1/text-to-video",
+    json={
+      "prompt": "x",
+      "model": "ltx-2-3-fast",
+      "duration": 6,
+      "resolution": "1920x1080",
+      "fps": 24,
+      "generate_audio": True,
+    },
+  )
+  assert r.status_code == 502
+  body = r.json()
+  _assert_error_shape(body)
+  assert body["error"]["type"] == "gpu_provider_error"
+  assert "Vast" in body["error"]["message"]

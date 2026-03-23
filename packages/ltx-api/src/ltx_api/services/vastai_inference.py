@@ -180,6 +180,7 @@ class VastaiInferenceBackend:
             label=self._settings.vast_label,
             template_hash_id=self._settings.vast_template_hash_id,
             image=self._settings.vast_image,
+            template_send_disk=self._settings.vast_template_send_disk,
           )
           break
         except vast.VastAPIError as exc:

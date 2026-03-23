@@ -42,6 +42,10 @@ class Settings(BaseSettings):
   vast_gpu_name: str = Field(default="A100_SXM4", description="Primary GPU filter for bundle search")
   vast_disk_gb: int = Field(default=200, description="Allocated disk when creating instance")
   vast_disk_search_gb: int = Field(default=100, description="Min host disk in bundle search")
+  vast_template_send_disk: bool = Field(
+    default=False,
+    description="If true, include disk in PUT body when using template_hash_id; false avoids invalid_args when disk exceeds offer max (template defaults apply)",
+  )
   vast_template_hash_id: str = Field(
     default="aa3bf4890de6b073eec0a2b89f1a82f2",
     description="Vast template hash (PyTorch image); empty uses vast_image instead",

@@ -105,17 +105,19 @@ def create_instance(
   label: str,
   template_hash_id: str,
   image: str,
+  template_send_disk: bool = False,
 ) -> int:
   """Start rental; returns new contract / instance id from API."""
   headers = {**_auth_header(api_key), "Content-Type": "application/json"}
-  # Template-based create: Vast docs only use template_hash_id + optional overrides
-  # (label, disk, env). Sending runtype with a template yields HTTP 400 invalid_args.
+  # Template-based create: Vast docs use template_hash_id + optional overrides only.
+  # Do not send runtype (conflicts with template). Omit disk unless explicitly requested —
+  # LTX_API_VAST_DISK_GB (e.g. 200) often exceeds a cheap offer's max → HTTP 400 invalid_args.
   if template_hash_id.strip():
-    body: dict[str, Any] = {
-      "template_hash_id": template_hash_id.strip(),
-      "disk": disk_gb,
-      "label": label,
-    }
+    body: dict[str, Any] = {"template_hash_id": template_hash_id.strip()}
+    if label.strip():
+      body["label"] = label.strip()
+    if template_send_disk and disk_gb > 0:
+      body["disk"] = disk_gb
   else:
     body = {
       "image": image,
@@ -127,11 +129,21 @@ def create_instance(
   r = client.put(url, headers=headers, json=body, timeout=60.0)
   if not r.is_success:
     detail: str
+    raw_preview: str
     try:
       parsed = r.json()
       detail = str(parsed.get("error") or parsed.get("msg") or parsed)
+      raw_preview = str(parsed)[:2000]
     except Exception:
-      detail = (r.text or "")[:2000] or r.reason_phrase
+      raw_preview = (r.text or "")[:2000]
+      detail = raw_preview or r.reason_phrase
+    logger.error(
+      "Vast create_instance failed offer_id=%s status=%s body_keys=%s raw=%s",
+      offer_id,
+      r.status_code,
+      list(body.keys()),
+      raw_preview,
+    )
     raise VastAPIError(
       f"Vast create_instance HTTP {r.status_code} for offer_id={offer_id} "
       f"(template_hash_id set={bool(template_hash_id.strip())}): {detail}"

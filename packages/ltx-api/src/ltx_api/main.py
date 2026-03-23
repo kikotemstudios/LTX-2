@@ -18,6 +18,7 @@ from ltx_api.routes.jobs import router as jobs_router
 from ltx_api.routes.upload import router as upload_router
 from ltx_api.services.mock_inference import MockInferenceBackend
 from ltx_api.services.storage import StorageService
+from ltx_api.services.vastai_client import VastAPIError
 
 
 def create_app(*, settings: Settings | None = None) -> FastAPI:
@@ -45,6 +46,19 @@ def create_app(*, settings: Settings | None = None) -> FastAPI:
   app.state.job_manager = JobManager(app.state.inference)
 
   app.add_exception_handler(RequestValidationError, request_validation_exception_handler)
+
+  @app.exception_handler(VastAPIError)
+  async def vast_api_error_handler(_request: Request, exc: VastAPIError) -> JSONResponse:
+    msg = str(exc)
+    if len(msg) > 800:
+      msg = msg[:797] + "..."
+    return JSONResponse(
+      status_code=502,
+      content=error_payload(
+        error_type="gpu_provider_error",
+        message=msg,
+      ),
+    )
 
   @app.exception_handler(HTTPException)
   async def http_exception_handler(_request: Request, exc: HTTPException) -> JSONResponse:

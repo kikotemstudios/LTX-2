@@ -164,18 +164,38 @@ class VastaiInferenceBackend:
     raise vast.VastAPIError("No Vast offers found after relaxed GPU search")
 
   def _provision(self) -> str:
+    """Provision a Vast instance; retries search+create on stale-offer / 400 from Vast."""
+    max_create_attempts = 3
     with httpx.Client(timeout=60.0) as client:
-      offer_id = self._search_offer(client)
-      contract_id = vast.create_instance(
-        client=client,
-        api_base=self._settings.vast_api_base,
-        api_key=self._settings.vast_api_key,
-        offer_id=offer_id,
-        disk_gb=self._settings.vast_disk_gb,
-        label=self._settings.vast_label,
-        template_hash_id=self._settings.vast_template_hash_id,
-        image=self._settings.vast_image,
-      )
+      contract_id: int | None = None
+      for attempt in range(max_create_attempts):
+        offer_id = self._search_offer(client)
+        try:
+          contract_id = vast.create_instance(
+            client=client,
+            api_base=self._settings.vast_api_base,
+            api_key=self._settings.vast_api_key,
+            offer_id=offer_id,
+            disk_gb=self._settings.vast_disk_gb,
+            label=self._settings.vast_label,
+            template_hash_id=self._settings.vast_template_hash_id,
+            image=self._settings.vast_image,
+          )
+          break
+        except vast.VastAPIError as exc:
+          logger.warning(
+            "Vast create_instance failed (attempt %s/%s, offer_id=%s): %s",
+            attempt + 1,
+            max_create_attempts,
+            offer_id,
+            exc,
+          )
+          if attempt + 1 < max_create_attempts:
+            time.sleep(1.0 + float(attempt))
+            continue
+          raise
+      if contract_id is None:
+        raise RuntimeError("Vast provision failed without contract_id")
       info = self._poll_instance_ready(client, contract_id)
     base = f"http://{info.public_ip}:{info.worker_host_port}"
     logger.info("Vast worker endpoint %s (instance_id=%s)", base, info.instance_id)

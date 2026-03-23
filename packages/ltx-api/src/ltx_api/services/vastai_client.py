@@ -124,7 +124,17 @@ def create_instance(
     }
   url = f"{api_base.rstrip('/')}/api/v0/asks/{offer_id}/"
   r = client.put(url, headers=headers, json=body, timeout=60.0)
-  r.raise_for_status()
+  if not r.is_success:
+    detail: str
+    try:
+      parsed = r.json()
+      detail = str(parsed.get("error") or parsed.get("msg") or parsed)
+    except Exception:
+      detail = (r.text or "")[:2000] or r.reason_phrase
+    raise VastAPIError(
+      f"Vast create_instance HTTP {r.status_code} for offer_id={offer_id} "
+      f"(template_hash_id set={bool(template_hash_id.strip())}): {detail}"
+    )
   data = r.json()
   if not data.get("success"):
     raise VastAPIError(f"Vast create failed: {data}")

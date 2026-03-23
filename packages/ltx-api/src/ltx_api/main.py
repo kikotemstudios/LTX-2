@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 import uvicorn
 from fastapi import Depends, FastAPI, HTTPException, Request
 from fastapi.exceptions import RequestValidationError
@@ -20,9 +21,22 @@ from ltx_api.services.mock_inference import MockInferenceBackend
 from ltx_api.services.storage import StorageService
 from ltx_api.services.vastai_client import VastAPIError
 
+logger = logging.getLogger(__name__)
+
+
+def _configure_debug_logging(enabled: bool) -> None:
+  level = logging.DEBUG if enabled else logging.INFO
+  logging.getLogger("ltx_api").setLevel(level)
+  if enabled:
+    # Include transport-level traces when diagnosing provider/inference failures.
+    logging.getLogger("httpx").setLevel(logging.DEBUG)
+    logging.getLogger("httpcore").setLevel(logging.DEBUG)
+    logger.warning("LTX API debug logging enabled")
+
 
 def create_app(*, settings: Settings | None = None) -> FastAPI:
   app_settings = settings or Settings()
+  _configure_debug_logging(app_settings.debug)
   app = FastAPI(title="LTX API", version="0.1.0")
   app.add_middleware(Normalize404Middleware)
 
@@ -94,7 +108,12 @@ def create_app(*, settings: Settings | None = None) -> FastAPI:
 def run() -> None:
   settings = Settings()
   app = create_app(settings=settings)
-  uvicorn.run(app, host=settings.host, port=settings.port)
+  uvicorn.run(
+    app,
+    host=settings.host,
+    port=settings.port,
+    log_level="debug" if settings.debug else "info",
+  )
 
 
 def create_app_instance() -> FastAPI:

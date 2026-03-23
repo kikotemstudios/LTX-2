@@ -46,6 +46,7 @@ def search_cheapest_offer(
   gpu_name: str,
   disk_search_gb: int,
   geolocation_preferred: str,
+  exclude_offer_ids: set[int] | None = None,
 ) -> int:
   """Return offer id to rent, or raise VastAPIError."""
   headers = {**_auth_header(api_key), "Content-Type": "application/json"}
@@ -87,10 +88,15 @@ def search_cheapest_offer(
         continue
       offers = data.get("offers") or []
       if offers:
-        oid = offers[0].get("id")
-        if oid is not None:
-          logger.info("Selected Vast offer id=%s type=%s geo=%s", oid, ondemand_type, with_geo)
-          return int(oid)
+        for offer in offers:
+          oid = offer.get("id")
+          if oid is None:
+            continue
+          oid_int = int(oid)
+          if exclude_offer_ids and oid_int in exclude_offer_ids:
+            continue
+          logger.info("Selected Vast offer id=%s type=%s geo=%s", oid_int, ondemand_type, with_geo)
+          return oid_int
 
   raise VastAPIError(f"No Vast offers matched search (tried {len(urls_tried)} requests)")
 
@@ -106,6 +112,7 @@ def create_instance(
   template_hash_id: str,
   image: str,
   template_send_disk: bool = False,
+  debug_log_payload: bool = False,
 ) -> int:
   """Start rental; returns new contract / instance id from API."""
   headers = {**_auth_header(api_key), "Content-Type": "application/json"}
@@ -125,8 +132,13 @@ def create_instance(
       "runtype": "ssh_direct",
       "label": label,
     }
+  if debug_log_payload:
+    logger.warning("Vast create_instance request offer_id=%s body=%s", offer_id, body)
   url = f"{api_base.rstrip('/')}/api/v0/asks/{offer_id}/"
   r = client.put(url, headers=headers, json=body, timeout=60.0)
+  if debug_log_payload:
+    preview = (r.text or "")[:2000]
+    logger.warning("Vast create_instance response offer_id=%s status=%s body=%s", offer_id, r.status_code, preview)
   if not r.is_success:
     detail: str
     raw_preview: str

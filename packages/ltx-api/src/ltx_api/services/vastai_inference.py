@@ -135,7 +135,7 @@ class VastaiInferenceBackend:
     msg = "Timed out waiting for Vast instance and worker port mapping"
     raise RuntimeError(msg)
 
-  def _search_offer(self, client: httpx.Client) -> int:
+  def _search_offer(self, client: httpx.Client, *, exclude_offer_ids: set[int] | None = None) -> int:
     try:
       return vast.search_cheapest_offer(
         client=client,
@@ -145,6 +145,7 @@ class VastaiInferenceBackend:
         gpu_name=self._settings.vast_gpu_name,
         disk_search_gb=self._settings.vast_disk_search_gb,
         geolocation_preferred=self._settings.vast_geolocation_preferred,
+        exclude_offer_ids=exclude_offer_ids,
       )
     except vast.VastAPIError:
       logger.info("Primary Vast GPU search failed; trying relaxed GPU list")
@@ -158,6 +159,7 @@ class VastaiInferenceBackend:
           gpu_name=g,
           disk_search_gb=self._settings.vast_disk_search_gb,
           geolocation_preferred=self._settings.vast_geolocation_preferred,
+          exclude_offer_ids=exclude_offer_ids,
         )
       except vast.VastAPIError:
         continue
@@ -168,9 +170,12 @@ class VastaiInferenceBackend:
     max_create_attempts = 3
     with httpx.Client(timeout=60.0) as client:
       contract_id: int | None = None
+      excluded_offer_ids: set[int] = set()
       for attempt in range(max_create_attempts):
-        offer_id = self._search_offer(client)
+        offer_id = self._search_offer(client, exclude_offer_ids=excluded_offer_ids)
+        excluded_offer_ids.add(offer_id)
         try:
+          template_hash = self._settings.vast_template_hash_id
           contract_id = vast.create_instance(
             client=client,
             api_base=self._settings.vast_api_base,
@@ -178,12 +183,35 @@ class VastaiInferenceBackend:
             offer_id=offer_id,
             disk_gb=self._settings.vast_disk_gb,
             label=self._settings.vast_label,
-            template_hash_id=self._settings.vast_template_hash_id,
+            template_hash_id=template_hash,
             image=self._settings.vast_image,
             template_send_disk=self._settings.vast_template_send_disk,
+            debug_log_payload=self._settings.vast_debug_log_payload,
           )
           break
         except vast.VastAPIError as exc:
+          # Some offers reject the template payload as invalid_args; fallback to raw image create.
+          if template_hash.strip() and "invalid_args" in str(exc).lower():
+            logger.warning(
+              "Vast template create rejected for offer_id=%s; retrying same offer with image payload",
+              offer_id,
+            )
+            try:
+              contract_id = vast.create_instance(
+                client=client,
+                api_base=self._settings.vast_api_base,
+                api_key=self._settings.vast_api_key,
+                offer_id=offer_id,
+                disk_gb=self._settings.vast_disk_gb,
+                label=self._settings.vast_label,
+                template_hash_id="",
+                image=self._settings.vast_image,
+                template_send_disk=self._settings.vast_template_send_disk,
+                debug_log_payload=self._settings.vast_debug_log_payload,
+              )
+              break
+            except vast.VastAPIError:
+              pass
           logger.warning(
             "Vast create_instance failed (attempt %s/%s, offer_id=%s): %s",
             attempt + 1,

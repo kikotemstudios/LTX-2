@@ -13,6 +13,7 @@ class Settings(BaseSettings):
 
   host: str = Field(default="0.0.0.0", description="Bind address")
   port: int = Field(default=8080, description="Bind port")
+  debug: bool = Field(default=False, description="Enable verbose debug logging across ltx-api and HTTP clients")
   auth_token: str = Field(default="", description="Bearer token; empty disables auth")
   inference_backend: str = Field(
     default="mock",
@@ -45,6 +46,10 @@ class Settings(BaseSettings):
   vast_template_send_disk: bool = Field(
     default=False,
     description="If true, include disk in PUT body when using template_hash_id; false avoids invalid_args when disk exceeds offer max (template defaults apply)",
+  )
+  vast_debug_log_payload: bool = Field(
+    default=False,
+    description="If true, log full Vast create-instance request payloads and responses for debugging",
   )
   vast_template_hash_id: str = Field(
     default="aa3bf4890de6b073eec0a2b89f1a82f2",

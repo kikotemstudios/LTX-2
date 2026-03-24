@@ -58,7 +58,35 @@ On first `/v1/*` inference request **ltx-api**:
 
 After `LTX_API_VAST_IDLE_TIMEOUT_SECONDS` without inference, it `DELETE`s the instance.
 
-**Important:** The rented image must **start the GPU worker** and **publish port 8765**. Use [`deploy/worker_setup.sh`](../../../deploy/worker_setup.sh) on the instance (SSH/rsync) or bake startup into your Vast template.
+**Important:** The rented image must **start the GPU worker** and **publish port 8765**. Prefer the **Docker image** below; alternatively use [`deploy/worker_setup.sh`](../../../deploy/worker_setup.sh) on the instance (SSH) or a custom Vast template.
+
+## GPU worker Docker image (Vast.ai)
+
+Build from the **monorepo root** (use `linux/amd64` for Vast):
+
+```bash
+docker build --platform linux/amd64 -f deploy/Dockerfile.ltx-gpu-worker -t YOUR_REGISTRY/ltx-gpu-worker:latest .
+docker push YOUR_REGISTRY/ltx-gpu-worker:latest
+```
+
+Point **ltx-api** at the image (template hash empty):
+
+```bash
+LTX_API_VAST_TEMPLATE_HASH_ID=
+LTX_API_VAST_IMAGE=YOUR_REGISTRY/ltx-gpu-worker:latest
+```
+
+Or create a **Vast template** from this image in the Vast console and set `LTX_API_VAST_TEMPLATE_HASH_ID` to that template’s hash.
+
+**First boot:** The entrypoint [`deploy/docker-entrypoint-gpu-worker.sh`](../../../deploy/docker-entrypoint-gpu-worker.sh) downloads the distilled checkpoint and spatial upsampler (public URLs). **Gemma 3** is downloaded with `huggingface_hub` when **`HF_TOKEN`** is set (accept the Gemma license on Hugging Face first). To skip the download, mount pre-downloaded weights at `/models` or set `LTX_API_GEMMA_ROOT` / `LTX_API_CHECKPOINT_PATH` / `LTX_API_SPATIAL_UPSAMPLER_PATH` to existing paths.
+
+**Camera motion LoRAs:** The entrypoint also pulls the seven **Lightricks LTX-2 19b** camera-control adapters (dolly/jib/static) into `LTX_CAMERA_LORA_DIR` (default `/models/ltx-2-19b-lora-camera-control`). They are ~4GB+ total (the static LoRA is ~2.2GB). Set **`LTX_SKIP_CAMERA_LORAS=1`** to skip. `ltx-gpu-worker` does not load them automatically yet; wiring uses `DistilledPipeline(..., loras=...)` when you map `camera_motion` → file path.
+
+**Runtime env (optional):** `LTX_WORKER_PREWARM=1` (default in the image), `HF_TOKEN`, `MODELS_DIR` (default `/models`).
+
+**Non-distilled (full / “pro”) checkpoint:** set `LTX_API_WORKER_PIPELINE=full` (or `LTX_WORKER_WEIGHT_PROFILE=full`). The entrypoint downloads `ltx-2.3-22b-dev.safetensors` and clears `LTX_API_SPATIAL_UPSAMPLER_PATH`. The worker runs `TI2VidOneStagePipeline` for model ids `ltx-2-3-pro` / `ltx-2-pro`.
+
+**Desktop fast + pro on one worker:** set `LTX_API_WORKER_PIPELINE=both`. The entrypoint downloads distilled + spatial upsampler + dev checkpoint and sets `LTX_API_CHECKPOINT_PATH` (distilled), `LTX_API_FULL_CHECKPOINT_PATH` (dev), and `LTX_API_SPATIAL_UPSAMPLER_PATH`. Inference routes by request `model`: `ltx-2-3-fast` → `DistilledPipeline`, `ltx-2-3-pro` → `TI2VidOneStagePipeline` (see [`real_inference.py`](../src/ltx_api/services/real_inference.py)).
 
 ## GPU worker setup
 

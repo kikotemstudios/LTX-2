@@ -1,0 +1,9 @@
+# Smaller docker build context (API + GPU worker images)
+.git
+**/.venv
+**/__pycache__
+**/*.pyc
+**/.pytest_cache
+**/.mypy_cache
+**/*.egg-info
+**/node_modules

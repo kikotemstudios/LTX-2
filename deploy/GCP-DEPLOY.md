@@ -1,8 +1,8 @@
 # Deploy **ltx-api** to a GCP VM (gcloud + Cloud Build)
 
-Naming: the container image and service are **`ltx-api`**. The GPU side is **`ltx-gpu-worker`** (Vast / RunPod).
+Naming: the API image is **`ltx-api`**. The GPU side is **`ltx-gpu-worker`** (Vast / RunPod / any host that runs the worker container).
 
-**Where the image is built:** **`ltx-api` is built in Cloud Build** (§3) and pushed to Artifact Registry. The **GCP VM never runs `docker compose build`** for the API — only **`docker compose pull`** + **`up`**.
+**Where images are built:** **`ltx-api` and `ltx-gpu-worker` are built in Cloud Build** (§3) and pushed to Artifact Registry. The **GCP VM never runs `docker compose build`** for the API — only **`docker compose pull`** + **`up`**. The **GPU worker** image is not run on the small GCP API VM; you pull the same tag on Vast / a GPU host (or point `LTX_API_VAST_IMAGE` at it).
 
 ## Prerequisites
 
@@ -86,10 +86,18 @@ From the **monorepo root** (parent of `deploy/`):
 gcloud builds submit --config=deploy/cloudbuild.yaml .
 ```
 
-Image tags:
+One submit builds **two** images (see [`deploy/cloudbuild.yaml`](cloudbuild.yaml)):
+
+| Image | Dockerfile | Typical use |
+|-------|------------|-------------|
+| **`ltx-api`** | [`deploy/Dockerfile.ltx-api`](Dockerfile.ltx-api) | GCP VM — HTTP API only |
+| **`ltx-gpu-worker`** | [`deploy/Dockerfile.ltx-gpu-worker`](Dockerfile.ltx-gpu-worker) | Vast / GPU host — `ltx-gpu-worker` on port 8765 |
+
+**Tags** (both images get the same tag names):
 
 - `${REGION}-docker.pkg.dev/${PROJECT_ID}/${AR_REPO}/ltx-api:latest`
-- same with `$SHORT_SHA`
+- `${REGION}-docker.pkg.dev/${PROJECT_ID}/${AR_REPO}/ltx-gpu-worker:latest`
+- same pair with `$SHORT_SHA` instead of `latest`
 
 **Manual `gcloud builds submit`:** `SHORT_SHA` defaults to **empty** (only set for repo-triggered builds). Set the **default** substitution `SHORT_SHA` — not `_SHORT_SHA` (underscore keys are *custom* and must appear as `${_FOO}` in `cloudbuild.yaml`; this file uses built-in `$SHORT_SHA`).
 
@@ -103,6 +111,31 @@ Override region/repo/name only:
 ```bash
 gcloud builds submit --config=deploy/cloudbuild.yaml \
   --substitutions=_REGION=us-central1,_AR_REPO=ltx-docker,_IMAGE_NAME=ltx-api .
+```
+
+The GPU worker image name defaults to **`ltx-gpu-worker`** (`_GPU_WORKER_IMAGE_NAME` in [`cloudbuild.yaml`](cloudbuild.yaml)). Override it:
+
+```bash
+gcloud builds submit --config=deploy/cloudbuild.yaml \
+  --substitutions=_GPU_WORKER_IMAGE_NAME=ltx-gpu-worker,_REGION=us-central1 .
+```
+
+### Using the worker image from Artifact Registry (Vast / GPU)
+
+Point **`LTX_API_VAST_IMAGE`** (in the API `.env` on the GCP VM) at the Artifact Registry URL Vast can pull:
+
+```text
+LTX_API_VAST_IMAGE=${REGION}-docker.pkg.dev/${PROJECT_ID}/${AR_REPO}/ltx-gpu-worker:latest
+```
+
+Also set **`LTX_API_VAST_TEMPLATE_HASH_ID=`** empty (see [`.env.example`](.env.example)) so provisioning uses the image instead of a template hash.
+
+If Vast cannot pull private Artifact Registry images, either make the repo **readable** for that identity (e.g. grant `roles/artifactregistry.reader` to a service account Vast uses, if supported) or **mirror** the image to Docker Hub / another registry Vast already supports and set `LTX_API_VAST_IMAGE` there.
+
+**Local build (no Cloud Build):** from the monorepo root, same as [`packages/ltx-api/docs/deployment.md`](../packages/ltx-api/docs/deployment.md):
+
+```bash
+docker build --platform linux/amd64 -f deploy/Dockerfile.ltx-gpu-worker -t ltx-gpu-worker:local .
 ```
 
 ## 4) One-time: VM can pull from Artifact Registry

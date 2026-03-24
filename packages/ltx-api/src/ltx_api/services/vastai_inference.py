@@ -83,20 +83,77 @@ class VastaiInferenceBackend:
         self._managed_instance = False
 
   def _wait_worker_http(self, base: str) -> None:
-    url = f"{base.rstrip('/')}/health"
+    health_url = f"{base.rstrip('/')}/health"
     deadline = time.monotonic() + self._settings.vast_http_timeout_seconds
     pause = max(3.0, self._settings.vast_poll_interval_seconds)
     while time.monotonic() < deadline:
       try:
         with httpx.Client(timeout=10.0) as client:
-          r = client.get(url)
+          r = client.get(health_url)
           if r.status_code == 200:
+            logger.info("GPU worker HTTP up at %s", health_url)
+            if self._settings.vast_worker_poll_ready:
+              self._poll_worker_ready_endpoint(base)
             return
       except httpx.HTTPError:
         pass
       time.sleep(pause)
-    msg = f"GPU worker did not become healthy at {url}"
+    msg = f"GPU worker did not become healthy at {health_url}"
     raise RuntimeError(msg)
+
+  def _poll_worker_ready_endpoint(self, base: str) -> None:
+    """Poll GET /ready; log when readiness changes. Optional wait until pipeline loaded."""
+    ready_url = f"{base.rstrip('/')}/ready"
+    deadline = time.monotonic() + self._settings.vast_worker_ready_timeout_seconds
+    pause = max(3.0, self._settings.vast_poll_interval_seconds)
+    last_key: str | None = None
+    timeout_s = self._settings.vast_worker_ready_timeout_seconds
+
+    while time.monotonic() < deadline:
+      try:
+        with httpx.Client(timeout=10.0) as client:
+          r = client.get(ready_url)
+          if r.status_code == 404:
+            logger.info("GPU worker has no /ready (%s); skipping readiness poll", ready_url)
+            return
+          if r.status_code != 200:
+            logger.warning(
+              "GPU worker /ready HTTP %s: %s",
+              r.status_code,
+              (r.text or "")[:300],
+            )
+            time.sleep(pause)
+            continue
+          try:
+            data = r.json()
+          except json.JSONDecodeError:
+            logger.warning("GPU worker /ready non-JSON: %s", (r.text or "")[:200])
+            time.sleep(pause)
+            continue
+          ready = bool(data.get("ready"))
+          detail = str(data.get("detail") or "")
+          key = f"{ready}|{detail}"
+          if key != last_key:
+            last_key = key
+            logger.info("GPU worker readiness: ready=%s — %s", ready, detail[:500])
+          if ready:
+            return
+          time.sleep(pause)
+      except httpx.HTTPError:
+        time.sleep(pause)
+
+    if last_key is None:
+      logger.warning("GPU worker /ready: no successful response before timeout (%s)", ready_url)
+      return
+
+    if self._settings.vast_worker_wait_for_pipeline_ready:
+      msg = f"GPU worker did not report ready=true within {timeout_s}s at {ready_url}"
+      raise RuntimeError(msg)
+    logger.warning(
+      "GPU worker still ready=false after %ss; continuing (first request may load pipeline). "
+      "Set LTX_WORKER_PREWARM=1 on the worker or increase LTX_API_VAST_WORKER_READY_TIMEOUT_SECONDS.",
+      timeout_s,
+    )
 
   def _poll_instance_ready(
     self,

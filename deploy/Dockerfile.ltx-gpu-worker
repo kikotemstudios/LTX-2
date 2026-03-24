@@ -1,0 +1,75 @@
+# =============================================================================
+# LTX GPU worker for Vast.ai (or any NVIDIA Container Toolkit host).
+# Serves ltx-gpu-worker (FastAPI) on port 8765 — set LTX_API_VAST_IMAGE to this image.
+#
+# Build from monorepo root (linux/amd64 for Vast):
+#   docker build --platform linux/amd64 -f deploy/Dockerfile.ltx-gpu-worker -t YOUR_REGISTRY/ltx-gpu-worker:latest .
+#
+# Installs PyTorch CUDA wheels, then editable ltx-core → ltx-pipelines → ltx-api[real]
+# (does not rely on root uv.lock containing ltx-api).
+#
+# Runtime (Vast template / env):
+#   - Map container port 8765 -> public HostPort (match LTX_API_VAST_WORKER_INTERNAL_PORT).
+#   - HF_TOKEN: required on first boot unless Gemma is mounted at LTX_API_GEMMA_ROOT.
+#   - LTX_SKIP_CAMERA_LORAS=1: skip ~4GB of LTX-2 19b camera LoRA downloads (see docker-entrypoint-gpu-worker.sh).
+# =============================================================================
+FROM nvidia/cuda:12.6.3-runtime-ubuntu22.04
+
+ENV DEBIAN_FRONTEND=noninteractive
+ENV PYTHONUNBUFFERED=1
+ENV NVIDIA_VISIBLE_DEVICES=all
+ENV NVIDIA_DRIVER_CAPABILITIES=compute,utility
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    ca-certificates \
+    curl \
+    git \
+    ffmpeg \
+    libglib2.0-0 \
+    libsm6 \
+    libxext6 \
+    software-properties-common \
+  && add-apt-repository -y ppa:deadsnakes/ppa \
+  && apt-get update && apt-get install -y --no-install-recommends \
+    python3.12 \
+    python3.12-venv \
+  && rm -rf /var/lib/apt/lists/*
+
+RUN ln -sf /usr/bin/python3.12 /usr/local/bin/python3 \
+  && ln -sf /usr/bin/python3.12 /usr/local/bin/python
+
+COPY --from=ghcr.io/astral-sh/uv:latest /uv /usr/local/bin/uv
+
+ENV REPO_ROOT=/workspace/LTX-2
+WORKDIR ${REPO_ROOT}
+
+COPY packages/ltx-core ./packages/ltx-core
+COPY packages/ltx-pipelines ./packages/ltx-pipelines
+COPY packages/ltx-api ./packages/ltx-api
+
+RUN uv venv .venv --python python3.12 \
+  && uv pip install --python .venv/bin/python \
+    torch torchvision torchaudio \
+    --index-url https://download.pytorch.org/whl/cu129 \
+  && uv pip install --python .venv/bin/python \
+    -e ./packages/ltx-core \
+    -e ./packages/ltx-pipelines \
+  && uv pip install --python .venv/bin/python \
+    -e "./packages/ltx-api[real]"
+
+ENV PATH="${REPO_ROOT}/.venv/bin:${PATH}"
+ENV VIRTUAL_ENV="${REPO_ROOT}/.venv"
+
+COPY deploy/docker-entrypoint-gpu-worker.sh /usr/local/bin/docker-entrypoint-gpu-worker.sh
+RUN chmod +x /usr/local/bin/docker-entrypoint-gpu-worker.sh
+
+ENV LTX_WORKER_HOST=0.0.0.0
+ENV LTX_WORKER_PORT=8765
+ENV LTX_WORKER_PREWARM=1
+ENV MODELS_DIR=/models
+
+RUN mkdir -p /models /data/ltx-api-storage
+
+EXPOSE 8765
+
+ENTRYPOINT ["/usr/local/bin/docker-entrypoint-gpu-worker.sh"]

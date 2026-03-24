@@ -7,6 +7,7 @@ from __future__ import annotations
 import json
 import logging
 import os
+import threading
 from pathlib import Path
 from typing import Annotated, Any
 
@@ -35,11 +36,26 @@ def create_app() -> FastAPI:
   work_dir.mkdir(parents=True, exist_ok=True)
   backend = RealInferenceBackend(settings=settings, work_dir=work_dir)
 
+  _pre = os.environ.get("LTX_WORKER_PREWARM", "").strip().lower()
+  if _pre in ("1", "true", "yes", "on"):
+    def _warm() -> None:
+      try:
+        backend.prewarm_pipeline()
+        logger.info("LTX_WORKER_PREWARM: pipeline loaded")
+      except Exception:
+        logger.exception("LTX_WORKER_PREWARM: failed")
+
+    threading.Thread(target=_warm, name="ltx-worker-prewarm", daemon=True).start()
+
   app = FastAPI(title="LTX GPU Worker", version="0.1.0")
 
   @app.get("/health")
   def health() -> dict[str, str]:
     return {"status": "ok"}
+
+  @app.get("/ready")
+  def ready() -> dict[str, str | bool]:
+    return backend.readiness()
 
   @app.post("/infer")
   async def infer(

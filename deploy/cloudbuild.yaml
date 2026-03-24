@@ -1,4 +1,4 @@
-# Build ltx-api image and push to Artifact Registry.
+# Build ltx-api + ltx-gpu-worker and push both to Artifact Registry.
 # Submit from monorepo root:
 #   gcloud builds submit --config=deploy/cloudbuild.yaml .
 #
@@ -6,12 +6,14 @@
 #   --substitutions=SHORT_SHA=$(git rev-parse --short HEAD),_REGION=...
 # Do not use _SHORT_SHA — custom keys must be referenced as ${_NAME} in this file.
 #
+# GPU worker: CUDA image (NVIDIA base); used on Vast / RunPod / any host that pulls this tag.
 # Requires: Artifact Registry repo (see deploy/GCP-DEPLOY.md).
 
 substitutions:
   _REGION: us-central1
   _AR_REPO: ltx-docker
   _IMAGE_NAME: ltx-api
+  _GPU_WORKER_IMAGE_NAME: ltx-gpu-worker
 
 steps:
   - name: gcr.io/cloud-builders/docker
@@ -25,6 +27,19 @@ steps:
       - ${_REGION}-docker.pkg.dev/$PROJECT_ID/${_AR_REPO}/${_IMAGE_NAME}:latest
       - .
 
+  - name: gcr.io/cloud-builders/docker
+    args:
+      - build
+      - -f
+      - deploy/Dockerfile.ltx-gpu-worker
+      - -t
+      - ${_REGION}-docker.pkg.dev/$PROJECT_ID/${_AR_REPO}/${_GPU_WORKER_IMAGE_NAME}:$SHORT_SHA
+      - -t
+      - ${_REGION}-docker.pkg.dev/$PROJECT_ID/${_AR_REPO}/${_GPU_WORKER_IMAGE_NAME}:latest
+      - .
+
 images:
   - ${_REGION}-docker.pkg.dev/$PROJECT_ID/${_AR_REPO}/${_IMAGE_NAME}:$SHORT_SHA
   - ${_REGION}-docker.pkg.dev/$PROJECT_ID/${_AR_REPO}/${_IMAGE_NAME}:latest
+  - ${_REGION}-docker.pkg.dev/$PROJECT_ID/${_AR_REPO}/${_GPU_WORKER_IMAGE_NAME}:$SHORT_SHA
+  - ${_REGION}-docker.pkg.dev/$PROJECT_ID/${_AR_REPO}/${_GPU_WORKER_IMAGE_NAME}:latest

@@ -26,9 +26,23 @@ class Settings(BaseSettings):
   )
   max_concurrent_jobs: int = Field(default=1)
   job_ttl_seconds: int = Field(default=3600)
-  checkpoint_path: str | None = Field(default=None)
+  checkpoint_path: str | None = Field(
+    default=None,
+    description="Distilled checkpoint (fast / ltx-2-3-fast); also sole checkpoint when worker_pipeline=full (dev .safetensors)",
+  )
+  full_checkpoint_path: str | None = Field(
+    default=None,
+    description="Non-distilled dev checkpoint for pro / ltx-2-3-pro; required when worker_pipeline=both",
+  )
   gemma_root: str | None = Field(default=None)
   spatial_upsampler_path: str | None = Field(default=None)
+  worker_pipeline: str = Field(
+    default="distilled",
+    description=(
+      "distilled = DistilledPipeline only (fast); full = TI2VidOneStagePipeline only (pro); "
+      "both = load both checkpoints and pick pipeline by model id (Desktop fast vs pro)"
+    ),
+  )
 
   # --- Vast.ai / GPU worker (inference_backend=vastai) ---
   # If set, skip Vast provisioning and forward inference here (manual or fixed worker).
@@ -74,3 +88,15 @@ class Settings(BaseSettings):
   )
   vast_poll_interval_seconds: float = Field(default=15.0, description="Poll interval when waiting for instance/worker")
   vast_http_timeout_seconds: float = Field(default=1200.0, description="HTTP timeout for worker inference calls")
+  vast_worker_poll_ready: bool = Field(
+    default=True,
+    description="After GET /health succeeds, poll GET /ready on the worker and log readiness changes in ltx-api logs",
+  )
+  vast_worker_wait_for_pipeline_ready: bool = Field(
+    default=False,
+    description="If True, block until /ready reports ready=true or vast_worker_ready_timeout_seconds (use with worker prewarm)",
+  )
+  vast_worker_ready_timeout_seconds: float = Field(
+    default=300.0,
+    description="Max seconds to poll /ready after /health (when vast_worker_poll_ready)",
+  )

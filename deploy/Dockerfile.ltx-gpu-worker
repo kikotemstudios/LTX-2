@@ -43,6 +43,11 @@ COPY --from=ghcr.io/astral-sh/uv:latest /uv /usr/local/bin/uv
 ENV REPO_ROOT=/workspace/LTX-2
 WORKDIR ${REPO_ROOT}
 
+# Monorepo workspace root (members = packages/*). Required so `uv pip install -e
+# packages/ltx-api[real]` can resolve `ltx-pipelines = { workspace = true }` in
+# packages/ltx-api/pyproject.toml.
+COPY pyproject.toml ./pyproject.toml
+
 COPY packages/ltx-core ./packages/ltx-core
 COPY packages/ltx-pipelines ./packages/ltx-pipelines
 COPY packages/ltx-api ./packages/ltx-api
